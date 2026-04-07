@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   preview: {
     port: process.env.PORT || 4173,
-    host: true
+    host: true,
+    allowedHosts: ['costa-rica-planner-production.up.railway.app']
   }
 })
