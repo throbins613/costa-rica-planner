@@ -775,6 +775,11 @@ Return ONLY valid JSON with this exact structure, no markdown, no explanation:
                     <button onClick={() => setExpandedLeg(isExp ? null : leg.id)} style={{ fontSize: 12, padding: "7px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(226,201,126,0.2)", borderRadius: 8, color: "rgba(226,201,126,0.8)", cursor: "pointer", fontFamily: "Georgia,serif" }}>
                       {isExp ? "\u25B2 Hide tasks" : `\u25BC Tasks (${doneLegTasks}/${leg.tasks.length})`}
                     </button>
+                    {leg.options?.length > 0 && !isExp && (
+                      <button onClick={() => setExpandedLeg(leg.id)} style={{ fontSize: 12, padding: "7px 14px", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 8, color: "#4ade80", cursor: "pointer", fontFamily: "Georgia,serif" }}>
+                        {`\u2605 ${leg.options.length} options found`}{winner ? ` \u00b7 \uD83C\uDFC6 ${winner.name}` : ""}
+                      </button>
+                    )}
                     <button onClick={() => { setExpandedLeg(leg.id); researchLeg(leg); }} disabled={researching[leg.id]} style={{ fontSize: 12, padding: "7px 14px", background: researching[leg.id] ? "rgba(226,201,126,0.05)" : "linear-gradient(135deg,rgba(226,201,126,0.2),rgba(226,201,126,0.08))", border: "1px solid rgba(226,201,126,0.4)", borderRadius: 8, color: researching[leg.id] ? "rgba(226,201,126,0.4)" : "#e2c97e", cursor: researching[leg.id] ? "default" : "pointer", fontFamily: "Georgia,serif", fontWeight: "bold" }}>
                       {researching[leg.id] ? "Searching..." : leg.options?.length > 0 ? `Re-search (${leg.options.length})` : "Find options"}
                     </button>
