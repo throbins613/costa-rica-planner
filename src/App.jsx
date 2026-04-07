@@ -59,7 +59,127 @@ const INITIAL_PLAN = {
     "2026-08-24": "Drive to Miami. BA0206 home 17:00"
   },
   flightOptions: {},
-  replanHistory: []
+  replanHistory: [],
+  detailedBudget: {
+    partySize: { adults: 3, children: 5, total: 8, families: 2 },
+    categories: ["Accommodation", "Flights", "Transfers/Car Hire", "Food & Drink", "Activities/Entertainment", "Park Tickets", "Misc/Tips"],
+    dailyCosts: {
+      "2026-08-04": { label: "Miami arrival", leg: "miami", items: [
+        { category: "Flights", desc: "BA0207 LHR→MIA (booked separately)", amount: 0, perPerson: false, note: "Already booked" },
+        { category: "Accommodation", desc: "Miami airport hotel (1 night)", amount: 200, perPerson: false, note: "Estimate - 2 rooms" },
+        { category: "Food & Drink", desc: "Dinner near hotel", amount: 80, perPerson: false },
+        { category: "Transfers/Car Hire", desc: "Airport to hotel shuttle", amount: 0, perPerson: false, note: "Walking distance" }
+      ]},
+      "2026-08-05": { label: "Fly to Costa Rica", leg: "guanacaste", items: [
+        { category: "Flights", desc: "MIA → San José", amount: 1200, perPerson: false, note: "3 adults + 5 children" },
+        { category: "Transfers/Car Hire", desc: "San José to Guanacaste transfer/car hire", amount: 150, perPerson: false },
+        { category: "Food & Drink", desc: "Meals en route", amount: 60, perPerson: false }
+      ]},
+      "2026-08-06": { label: "Guanacaste Day 1", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night, split across stay)", amount: 350, perPerson: false, note: "~£2,450 for 7 nights" },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Beach / surf lessons", amount: 80, perPerson: false }
+      ]},
+      "2026-08-07": { label: "Guanacaste Day 2", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night)", amount: 350, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Wildlife tour / ATV", amount: 120, perPerson: false }
+      ]},
+      "2026-08-08": { label: "Guanacaste Day 3", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night)", amount: 350, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 90, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Surf lessons / snorkelling", amount: 80, perPerson: false }
+      ]},
+      "2026-08-09": { label: "Guanacaste Day 4", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night)", amount: 350, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Catamaran sunset cruise", amount: 150, perPerson: false }
+      ]},
+      "2026-08-10": { label: "Guanacaste Day 5", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night)", amount: 350, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Beach day / kayaking", amount: 60, perPerson: false }
+      ]},
+      "2026-08-11": { label: "Guanacaste Day 6", leg: "guanacaste", items: [
+        { category: "Accommodation", desc: "Villa (per night)", amount: 350, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Horseback riding / market visit", amount: 90, perPerson: false }
+      ]},
+      "2026-08-12": { label: "Transfer to Arenal", leg: "arenal", items: [
+        { category: "Transfers/Car Hire", desc: "Drive Guanacaste → Arenal", amount: 100, perPerson: false, note: "Fuel + tolls if rental, or private transfer" },
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false, note: "~£1,800 for 6 nights" },
+        { category: "Food & Drink", desc: "Meals en route & dinner", amount: 100, perPerson: false }
+      ]},
+      "2026-08-13": { label: "Arenal Day 1", leg: "arenal", items: [
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Hot springs visit", amount: 120, perPerson: false }
+      ]},
+      "2026-08-14": { label: "Arenal Day 2", leg: "arenal", items: [
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Zip-lining / hanging bridges", amount: 150, perPerson: false }
+      ]},
+      "2026-08-15": { label: "Arenal Day 3", leg: "arenal", items: [
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 90, perPerson: false },
+        { category: "Activities/Entertainment", desc: "La Fortuna waterfall hike", amount: 80, perPerson: false }
+      ]},
+      "2026-08-16": { label: "Arenal Day 4", leg: "arenal", items: [
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "White water rafting", amount: 140, perPerson: false }
+      ]},
+      "2026-08-17": { label: "Arenal Day 5", leg: "arenal", items: [
+        { category: "Accommodation", desc: "Arenal villa (per night)", amount: 300, perPerson: false },
+        { category: "Food & Drink", desc: "Groceries & eating out", amount: 100, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Chocolate tour / nature walk", amount: 70, perPerson: false },
+        { category: "Misc/Tips", desc: "Villa staff tips", amount: 40, perPerson: false }
+      ]},
+      "2026-08-18": { label: "Fly to Orlando", leg: "orlando", items: [
+        { category: "Flights", desc: "San José → Orlando", amount: 1400, perPerson: false, note: "3 adults + 5 children" },
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false, note: "Amend to 5 nights" },
+        { category: "Food & Drink", desc: "Dinner", amount: 80, perPerson: false },
+        { category: "Transfers/Car Hire", desc: "Airport to hotel", amount: 40, perPerson: false }
+      ]},
+      "2026-08-19": { label: "Orlando - Theme Parks Day 1", leg: "orlando", items: [
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false },
+        { category: "Park Tickets", desc: "Theme park tickets (per person)", amount: 100, perPerson: true, note: "Disney/Universal day pass" },
+        { category: "Food & Drink", desc: "Park food & snacks", amount: 120, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Extras (FastPass, merch)", amount: 50, perPerson: false }
+      ]},
+      "2026-08-20": { label: "Orlando - Theme Parks Day 2", leg: "orlando", items: [
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false },
+        { category: "Park Tickets", desc: "Theme park tickets (per person)", amount: 100, perPerson: true, note: "Disney/Universal day pass" },
+        { category: "Food & Drink", desc: "Park food & snacks", amount: 120, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Extras (FastPass, merch)", amount: 50, perPerson: false }
+      ]},
+      "2026-08-21": { label: "Orlando - Rest Day", leg: "orlando", items: [
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false },
+        { category: "Food & Drink", desc: "Restaurants & snacks", amount: 80, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Pool day / mini golf / outlet shopping", amount: 40, perPerson: false }
+      ]},
+      "2026-08-22": { label: "Orlando - Theme Parks Day 3", leg: "orlando", items: [
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false },
+        { category: "Park Tickets", desc: "Theme park tickets (per person)", amount: 100, perPerson: true, note: "Disney/Universal day pass" },
+        { category: "Food & Drink", desc: "Park food & snacks", amount: 120, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Extras (FastPass, merch)", amount: 50, perPerson: false }
+      ]},
+      "2026-08-23": { label: "Orlando - Theme Parks Day 4", leg: "orlando", items: [
+        { category: "Accommodation", desc: "Orlando hotel (per night)", amount: 250, perPerson: false },
+        { category: "Park Tickets", desc: "Theme park tickets (per person)", amount: 100, perPerson: true, note: "Disney/Universal day pass" },
+        { category: "Food & Drink", desc: "Park food & snacks", amount: 120, perPerson: false },
+        { category: "Activities/Entertainment", desc: "Extras (FastPass, merch)", amount: 50, perPerson: false },
+        { category: "Misc/Tips", desc: "Hotel housekeeping tips", amount: 30, perPerson: false }
+      ]},
+      "2026-08-24": { label: "Drive to Miami, fly home", leg: "orlando", items: [
+        { category: "Transfers/Car Hire", desc: "Orlando → Miami drive/transfer", amount: 200, perPerson: false },
+        { category: "Food & Drink", desc: "Lunch en route", amount: 50, perPerson: false },
+        { category: "Flights", desc: "BA0206 MIA→LHR (booked separately)", amount: 0, perPerson: false, note: "Already booked" },
+        { category: "Misc/Tips", desc: "Misc travel snacks & extras", amount: 30, perPerson: false }
+      ]}
+    }
+  }
 };
 
 const STATUS_CONFIG = {
@@ -475,6 +595,9 @@ export default function App() {
   const [expandedOption, setExpandedOption] = useState(null);
   const [editingDay, setEditingDay] = useState(null);
   const [editDayText, setEditDayText] = useState("");
+  const [expandedBudgetDays, setExpandedBudgetDays] = useState({});
+  const [editingBudgetItem, setEditingBudgetItem] = useState(null);
+  const [editBudgetValue, setEditBudgetValue] = useState("");
   const [researchingFlights, setResearchingFlights] = useState({});
   const legRefs = useRef({});
   const timelineRef = useRef(null);
@@ -493,6 +616,7 @@ export default function App() {
     if (!parsed.dayNotes) parsed.dayNotes = INITIAL_PLAN.dayNotes;
     if (!parsed.flightOptions) parsed.flightOptions = {};
     if (!parsed.replanHistory) parsed.replanHistory = [];
+    if (!parsed.detailedBudget) parsed.detailedBudget = INITIAL_PLAN.detailedBudget;
     parsed.legs = parsed.legs.map((leg, i) => ({
       ...INITIAL_PLAN.legs[i],
       ...leg,
@@ -608,6 +732,25 @@ export default function App() {
   const updateDayNote = (dateStr, text) => {
     const updated = { ...plan, dayNotes: { ...plan.dayNotes, [dateStr]: text } };
     setPlan(updated); savePlan(updated);
+  };
+
+  const updateBudgetItemAmount = (dateStr, itemIndex, newAmount) => {
+    const db = plan.detailedBudget;
+    const dayData = db.dailyCosts[dateStr];
+    if (!dayData) return;
+    const newItems = dayData.items.map((item, i) => i === itemIndex ? { ...item, amount: newAmount } : item);
+    const updated = {
+      ...plan,
+      detailedBudget: {
+        ...db,
+        dailyCosts: { ...db.dailyCosts, [dateStr]: { ...dayData, items: newItems } }
+      }
+    };
+    setPlan(updated); savePlan(updated);
+  };
+
+  const toggleBudgetDay = (dateStr) => {
+    setExpandedBudgetDays(prev => ({ ...prev, [dateStr]: !prev[dateStr] }));
   };
 
   const scrollToLeg = (legId) => {
@@ -1342,21 +1485,285 @@ Return ONLY valid JSON with this exact structure, no markdown, no explanation:
         )}
 
         {/* BUDGET TAB */}
-        {activeTab === "budget" && (
-          <div>
-            <div style={{ padding: "18px", marginBottom: 14, background: "rgba(226,201,126,0.06)", border: "1px solid rgba(226,201,126,0.2)", borderRadius: 12, textAlign: "center" }}>
-              <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.5, textTransform: "uppercase", marginBottom: 6 }}>Total budget</div>
-              <div style={{ fontSize: 26, color: "#e2c97e" }}>{plan.budget.total}</div>
-              <div style={{ fontSize: 11, opacity: 0.4, marginTop: 4 }}>Accommodation & internal travel . Flights separate</div>
-            </div>
-            {plan.budget.items.map((item, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 14px", marginBottom: 7, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(226,201,126,0.08)", borderRadius: 10 }}>
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{item.label}</div>
-                <div style={{ fontSize: 13, color: "#e2c97e" }}>{item.estimate}</div>
+        {activeTab === "budget" && (() => {
+          const db = plan.detailedBudget;
+          const ps = db.partySize;
+          const CATEGORY_COLORS = {
+            "Accommodation": "#38bdf8",
+            "Flights": "#a78bfa",
+            "Transfers/Car Hire": "#f472b6",
+            "Food & Drink": "#fb923c",
+            "Activities/Entertainment": "#4ade80",
+            "Park Tickets": "#fbbf24",
+            "Misc/Tips": "#94a3b8"
+          };
+          const LEG_ICONS = { miami: "\u2708\uFE0F", guanacaste: "\uD83C\uDFD6\uFE0F", arenal: "\uD83C\uDF0B", orlando: "\uD83C\uDFA2" };
+          const LEG_LABELS = { miami: "Miami", guanacaste: "Guanacaste", arenal: "Arenal", orlando: "Orlando" };
+
+          // Calculate item effective amount
+          const itemTotal = (item) => item.perPerson ? item.amount * ps.total : item.amount;
+
+          // Day total
+          const dayTotal = (dateStr) => {
+            const day = db.dailyCosts[dateStr];
+            if (!day) return 0;
+            return day.items.reduce((sum, item) => sum + itemTotal(item), 0);
+          };
+
+          // Grand total
+          const grandTotal = Object.keys(db.dailyCosts).reduce((sum, d) => sum + dayTotal(d), 0);
+
+          // Category totals
+          const categoryTotals = {};
+          db.categories.forEach(cat => { categoryTotals[cat] = 0; });
+          Object.values(db.dailyCosts).forEach(day => {
+            day.items.forEach(item => {
+              categoryTotals[item.category] = (categoryTotals[item.category] || 0) + itemTotal(item);
+            });
+          });
+          const maxCategoryTotal = Math.max(...Object.values(categoryTotals), 1);
+
+          // Leg totals
+          const legTotals = {};
+          Object.entries(db.dailyCosts).forEach(([dateStr, day]) => {
+            const leg = day.leg || "other";
+            legTotals[leg] = (legTotals[leg] || 0) + dayTotal(dateStr);
+          });
+
+          const sortedDates = Object.keys(db.dailyCosts).sort();
+
+          return (
+            <div>
+              {/* SUMMARY CARDS */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: "Total trip cost", value: `\u00A3${grandTotal.toLocaleString()}`, color: "#e2c97e", size: 22 },
+                  { label: `Per person (\u00F7${ps.total})`, value: `\u00A3${Math.round(grandTotal / ps.total).toLocaleString()}`, color: "#38bdf8", size: 22 },
+                  { label: `Per adult (\u00F7${ps.adults})`, value: `\u00A3${Math.round(grandTotal / ps.adults).toLocaleString()}`, color: "#4ade80", size: 18 },
+                  { label: `Per family (\u00F7${ps.families})`, value: `\u00A3${Math.round(grandTotal / ps.families).toLocaleString()}`, color: "#f472b6", size: 18 }
+                ].map((card, i) => (
+                  <div key={i} style={{
+                    padding: "14px 12px",
+                    background: "rgba(226,201,126,0.04)",
+                    border: `1px solid ${card.color}30`,
+                    borderRadius: 12,
+                    textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.5, textTransform: "uppercase", marginBottom: 5 }}>{card.label}</div>
+                    <div style={{ fontSize: card.size, color: card.color, fontWeight: "bold" }}>{card.value}</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+
+              {/* CATEGORY BREAKDOWN */}
+              <div style={{ marginBottom: 16, padding: "14px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(226,201,126,0.12)", borderRadius: 12 }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 12 }}>Spend by category</div>
+                {db.categories.map(cat => {
+                  const total = categoryTotals[cat] || 0;
+                  const pct = maxCategoryTotal > 0 ? (total / maxCategoryTotal) * 100 : 0;
+                  const color = CATEGORY_COLORS[cat] || "#e2c97e";
+                  return (
+                    <div key={cat} style={{ marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 11, opacity: 0.8 }}>{cat}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color, fontWeight: "bold" }}>\u00A3{total.toLocaleString()}</span>
+                      </div>
+                      <div style={{ height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.4s" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* LEG SUBTOTALS */}
+              <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+                {Object.entries(legTotals).map(([legId, total]) => (
+                  <div key={legId} style={{
+                    flex: "1 1 auto",
+                    minWidth: 110,
+                    padding: "10px 12px",
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(226,201,126,0.12)",
+                    borderRadius: 10,
+                    textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: 16, marginBottom: 2 }}>{LEG_ICONS[legId] || "\u2708\uFE0F"}</div>
+                    <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 3 }}>{LEG_LABELS[legId] || legId}</div>
+                    <div style={{ fontSize: 14, color: "#e2c97e", fontWeight: "bold" }}>\u00A3{total.toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* DAY-BY-DAY TABLE */}
+              <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 10 }}>Day-by-day breakdown</div>
+              {sortedDates.map(dateStr => {
+                const dayData = db.dailyCosts[dateStr];
+                const total = dayTotal(dateStr);
+                const isExpanded = expandedBudgetDays[dateStr];
+                const dayNum = parseInt(dateStr.split("-")[2]);
+                const dayDate = new Date(2026, 7, dayNum);
+                const dayName = dayDate.toLocaleDateString("en-GB", { weekday: "short" });
+                const legIcon = LEG_ICONS[dayData.leg] || "";
+                const legLabel = LEG_LABELS[dayData.leg] || "";
+                const legColor = dayData.leg === "miami" ? "#38bdf8" : dayData.leg === "guanacaste" ? "#4ade80" : dayData.leg === "arenal" ? "#fb923c" : dayData.leg === "orlando" ? "#a78bfa" : "#e2c97e";
+
+                return (
+                  <div key={dateStr} style={{ marginBottom: 4 }}>
+                    {/* Day header row */}
+                    <div
+                      onClick={() => toggleBudgetDay(dateStr)}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "10px 12px",
+                        background: isExpanded ? "rgba(226,201,126,0.06)" : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${isExpanded ? "rgba(226,201,126,0.2)" : "rgba(226,201,126,0.08)"}`,
+                        borderRadius: isExpanded ? "10px 10px 0 0" : 10,
+                        cursor: "pointer",
+                        transition: "background 0.15s"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                        <div style={{ width: 36, flexShrink: 0 }}>
+                          <div style={{ fontSize: 9, opacity: 0.4, lineHeight: 1 }}>{dayName}</div>
+                          <div style={{ fontSize: 15, color: "#e2c97e", fontWeight: "bold", lineHeight: 1.2 }}>{dayNum}</div>
+                        </div>
+                        <span style={{ fontSize: 14, flexShrink: 0 }}>{legIcon}</span>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 11, color: legColor, opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dayData.label}</div>
+                          <div style={{ fontSize: 9, opacity: 0.4 }}>{dayData.items.length} item{dayData.items.length !== 1 ? "s" : ""}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <div style={{ fontSize: 13, color: "#e2c97e", fontWeight: "bold" }}>\u00A3{total.toLocaleString()}</div>
+                        <span style={{ fontSize: 10, opacity: 0.4 }}>{isExpanded ? "\u25B2" : "\u25BC"}</span>
+                      </div>
+                    </div>
+
+                    {/* Expanded items */}
+                    {isExpanded && (
+                      <div style={{
+                        padding: "8px 12px 12px",
+                        background: "rgba(226,201,126,0.03)",
+                        border: "1px solid rgba(226,201,126,0.2)",
+                        borderTop: "none",
+                        borderRadius: "0 0 10px 10px"
+                      }}>
+                        {dayData.items.map((item, idx) => {
+                          const catColor = CATEGORY_COLORS[item.category] || "#e2c97e";
+                          const effective = itemTotal(item);
+                          const isEditingThis = editingBudgetItem === `${dateStr}-${idx}`;
+                          const isBooked = item.note && (item.note.toLowerCase().includes("already booked") || item.note.toLowerCase().includes("booked"));
+
+                          return (
+                            <div key={idx} style={{
+                              display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                              padding: "8px 0",
+                              borderBottom: idx < dayData.items.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none"
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                  <span style={{
+                                    fontSize: 8, padding: "1px 6px", borderRadius: 8,
+                                    background: `${catColor}18`, color: catColor,
+                                    letterSpacing: 0.5, textTransform: "uppercase", flexShrink: 0
+                                  }}>{item.category}</span>
+                                </div>
+                                <div style={{ fontSize: 11, opacity: 0.8, lineHeight: 1.4 }}>{item.desc}</div>
+                                {item.note && (
+                                  <div style={{ fontSize: 10, opacity: 0.4, fontStyle: "italic", marginTop: 1, color: isBooked ? "#4ade80" : "inherit" }}>{item.note}</div>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, marginLeft: 8 }}>
+                                {isEditingThis ? (
+                                  <div onClick={e => e.stopPropagation()}>
+                                    <input
+                                      autoFocus
+                                      type="number"
+                                      value={editBudgetValue}
+                                      onChange={e => setEditBudgetValue(e.target.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === "Enter") {
+                                          const val = parseFloat(editBudgetValue) || 0;
+                                          updateBudgetItemAmount(dateStr, idx, val);
+                                          setEditingBudgetItem(null);
+                                        }
+                                        if (e.key === "Escape") setEditingBudgetItem(null);
+                                      }}
+                                      onBlur={() => {
+                                        const val = parseFloat(editBudgetValue) || 0;
+                                        updateBudgetItemAmount(dateStr, idx, val);
+                                        setEditingBudgetItem(null);
+                                      }}
+                                      style={{
+                                        width: 70, padding: "3px 6px", textAlign: "right",
+                                        background: "rgba(255,255,255,0.08)", border: "1px solid rgba(226,201,126,0.4)",
+                                        borderRadius: 5, color: "#e2c97e", fontSize: 12,
+                                        fontFamily: "Georgia,serif", outline: "none"
+                                      }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <div
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setEditingBudgetItem(`${dateStr}-${idx}`);
+                                      setEditBudgetValue(String(item.amount));
+                                    }}
+                                    style={{
+                                      fontSize: 12, color: isBooked ? "#4ade80" : "#e2c97e", fontWeight: "bold",
+                                      cursor: "pointer", padding: "2px 6px", borderRadius: 4,
+                                      border: "1px solid transparent",
+                                      transition: "border-color 0.15s"
+                                    }}
+                                    onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(226,201,126,0.3)"}
+                                    onMouseLeave={e => e.currentTarget.style.borderColor = "transparent"}
+                                    title="Click to edit"
+                                  >
+                                    \u00A3{item.amount.toLocaleString()}
+                                  </div>
+                                )}
+                                {item.perPerson && (
+                                  <div style={{ fontSize: 9, opacity: 0.5, marginTop: 2 }}>\u00D7{ps.total} = \u00A3{effective.toLocaleString()}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* PER-PERSON SUMMARY */}
+              <div style={{
+                marginTop: 16, padding: "16px",
+                background: "rgba(226,201,126,0.04)",
+                border: "1px solid rgba(226,201,126,0.2)",
+                borderRadius: 12
+              }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 12 }}>Per-person summary</div>
+                {[
+                  { label: `Total \u00F7 ${ps.total} people`, value: `\u00A3${Math.round(grandTotal / ps.total).toLocaleString()} pp`, color: "#38bdf8" },
+                  { label: `Per family (\u00F7 ${ps.families} families)`, value: `\u00A3${Math.round(grandTotal / ps.families).toLocaleString()} per family`, color: "#f472b6" },
+                  { label: `Per adult (\u00F7 ${ps.adults} adults)`, value: `\u00A3${Math.round(grandTotal / ps.adults).toLocaleString()} per adult`, color: "#4ade80" }
+                ].map((row, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: i < 2 ? "1px solid rgba(255,255,255,0.05)" : "none" }}>
+                    <span style={{ fontSize: 12, opacity: 0.7 }}>{row.label}</span>
+                    <span style={{ fontSize: 14, color: row.color, fontWeight: "bold" }}>{row.value}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 10, fontSize: 10, opacity: 0.4, fontStyle: "italic", textAlign: "center" }}>
+                  Excludes international flights (LHR-MIA booked separately)
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* NOTES TAB */}
         {activeTab === "notes" && (
