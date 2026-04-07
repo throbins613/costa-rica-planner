@@ -82,6 +82,27 @@ const TIMELINE_LEGS = [
   { id: "_flight_home", type: "transfer", label: "\u2192 MIA", status: "booked" }
 ];
 
+// Map stops data
+const MAP_STOPS = [
+  { id: "lhr-start", num: 1, label: "London Heathrow", dates: "4 Aug", lat: 51.4700, lng: -0.4543, legId: null, statusOverride: "booked" },
+  { id: "miami-arr", num: 2, label: "Miami, Florida", dates: "4-5 Aug", lat: 25.7617, lng: -80.1918, legId: "miami" },
+  { id: "guanacaste", num: 3, label: "Guanacaste / Santa Teresa", dates: "5-11 Aug", lat: 9.6526, lng: -85.1487, legId: "guanacaste" },
+  { id: "arenal", num: 4, label: "Arenal / La Fortuna", dates: "12-17 Aug", lat: 10.4689, lng: -84.6434, legId: "arenal" },
+  { id: "orlando", num: 5, label: "Orlando, Florida", dates: "18-23 Aug", lat: 28.5383, lng: -81.3792, legId: "orlando" },
+  { id: "miami-ret", num: 6, label: "Miami (return)", dates: "24 Aug", lat: 25.7617, lng: -80.1918, legId: null, statusOverride: "booked" },
+  { id: "lhr-end", num: 7, label: "London Heathrow", dates: "24 Aug", lat: 51.4700, lng: -0.4543, legId: null, statusOverride: "booked" }
+];
+
+// Route lines between stops
+const MAP_ROUTES = [
+  { from: 0, to: 1, type: "flight", color: "#38bdf8", dash: "8, 6" },
+  { from: 1, to: 2, type: "flight", color: "#38bdf8", dash: "8, 6" },
+  { from: 2, to: 3, type: "road", color: "#e2c97e", dash: null },
+  { from: 3, to: 4, type: "flight", color: "#38bdf8", dash: "8, 6" },
+  { from: 4, to: 5, type: "road", color: "#e2c97e", dash: null },
+  { from: 5, to: 6, type: "flight", color: "#38bdf8", dash: "8, 6" }
+];
+
 // Generate all dates from Aug 4 to Aug 24
 function generateTripDates() {
   const dates = [];
@@ -173,6 +194,271 @@ function diffFlights(oldFlights, newFlights) {
   }
 
   return changes;
+}
+
+// --- Map Component ---
+function TripMap({ plan }) {
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const [leafletReady, setLeafletReady] = useState(false);
+
+  // Load Leaflet from CDN
+  useEffect(() => {
+    if (window.L) {
+      setLeafletReady(true);
+      return;
+    }
+
+    // Load CSS
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(link);
+
+    // Load JS
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => setLeafletReady(true);
+    document.head.appendChild(script);
+
+    return () => {
+      // Don't remove - other instances may need them
+    };
+  }, []);
+
+  // Get status color for a stop
+  const getStopStatus = (stop) => {
+    if (stop.statusOverride) return stop.statusOverride;
+    if (stop.legId) {
+      const leg = plan.legs.find(l => l.id === stop.legId);
+      if (leg) return leg.status;
+    }
+    return "todo";
+  };
+
+  const getStatusColor = (status) => {
+    if (status === "booked") return "#4ade80";
+    if (status === "partial") return "#fbbf24";
+    return "#f87171";
+  };
+
+  const getStatusLabel = (status) => {
+    if (status === "booked") return "Booked";
+    if (status === "partial") return "Partial";
+    return "To Book";
+  };
+
+  // Get leg info for popup
+  const getStopLeg = (stop) => {
+    if (stop.legId) {
+      return plan.legs.find(l => l.id === stop.legId);
+    }
+    return null;
+  };
+
+  // Initialize/update map
+  useEffect(() => {
+    if (!leafletReady || !mapContainerRef.current) return;
+    const L = window.L;
+
+    // Destroy existing map
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    const map = L.map(mapContainerRef.current, {
+      zoomControl: true,
+      scrollWheelZoom: true,
+      dragging: true,
+      tap: true,
+      touchZoom: true
+    });
+
+    mapInstanceRef.current = map;
+
+    // Dark tile layer
+    L.tileLayer("https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 19
+    }).addTo(map);
+
+    const markers = [];
+
+    // Draw route lines first (under markers)
+    MAP_ROUTES.forEach(route => {
+      const from = MAP_STOPS[route.from];
+      const to = MAP_STOPS[route.to];
+      const lineOpts = {
+        color: route.color,
+        weight: 2.5,
+        opacity: 0.7
+      };
+      if (route.dash) {
+        lineOpts.dashArray = route.dash;
+      }
+      L.polyline([[from.lat, from.lng], [to.lat, to.lng]], lineOpts).addTo(map);
+    });
+
+    // Add numbered circle markers with popups and date labels
+    MAP_STOPS.forEach(stop => {
+      const status = getStopStatus(stop);
+      const color = getStatusColor(status);
+      const leg = getStopLeg(stop);
+      const legIcon = leg ? leg.icon : (stop.id.includes("lhr") ? "\u2708\uFE0F" : "\u2708\uFE0F");
+      const statusLabel = getStatusLabel(status);
+
+      // Custom divIcon for numbered pin
+      const icon = L.divIcon({
+        className: "",
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -20],
+        html: `<div style="
+          width:32px;height:32px;border-radius:50%;
+          background:${color};
+          border:3px solid rgba(255,255,255,0.9);
+          display:flex;align-items:center;justify-content:center;
+          font-family:Georgia,serif;font-size:14px;font-weight:bold;
+          color:#0a1628;
+          box-shadow:0 2px 8px rgba(0,0,0,0.5);
+          cursor:pointer;
+        ">${stop.num}</div>`
+      });
+
+      const marker = L.marker([stop.lat, stop.lng], { icon }).addTo(map);
+
+      // Popup content
+      const nights = leg ? `${leg.nights} night${leg.nights !== 1 ? "s" : ""}` : (stop.id.includes("lhr") ? "Transit" : "1 night");
+      const popupHtml = `
+        <div style="font-family:Georgia,serif;min-width:180px;color:#1a1a2e;">
+          <div style="font-size:16px;margin-bottom:4px;">${legIcon} <strong>${stop.label}</strong></div>
+          <div style="font-size:12px;color:#555;margin-bottom:6px;">${stop.dates} &middot; ${nights}</div>
+          <div style="
+            display:inline-block;font-size:11px;padding:2px 10px;border-radius:12px;
+            background:${color}30;color:${color === '#4ade80' ? '#16a34a' : color === '#fbbf24' ? '#b45309' : '#dc2626'};
+            font-weight:bold;
+          ">${statusLabel}</div>
+        </div>
+      `;
+      marker.bindPopup(popupHtml, {
+        className: "trip-map-popup",
+        closeButton: true,
+        maxWidth: 240
+      });
+
+      markers.push(marker);
+
+      // Date sticker as a small tooltip-label near the pin
+      const dateLabel = L.divIcon({
+        className: "",
+        iconSize: [80, 20],
+        iconAnchor: [40, -10],
+        html: `<div style="
+          background:rgba(10,22,40,0.85);
+          color:#e2c97e;
+          font-family:Georgia,serif;
+          font-size:10px;
+          padding:2px 8px;
+          border-radius:10px;
+          border:1px solid rgba(226,201,126,0.4);
+          white-space:nowrap;
+          text-align:center;
+          pointer-events:none;
+        ">${stop.dates}</div>`
+      });
+      L.marker([stop.lat, stop.lng], { icon: dateLabel, interactive: false }).addTo(map);
+    });
+
+    // Fit bounds to show all stops
+    const bounds = L.latLngBounds(MAP_STOPS.map(s => [s.lat, s.lng]));
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 5 });
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [leafletReady, plan.legs]);
+
+  return (
+    <div style={{ width: "100%", position: "relative" }}>
+      {/* Legend */}
+      <div style={{
+        display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10,
+        padding: "8px 12px",
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(226,201,126,0.12)",
+        borderRadius: 10
+      }}>
+        <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", lineHeight: "20px" }}>Legend:</div>
+        {[
+          { color: "#4ade80", label: "Booked" },
+          { color: "#fbbf24", label: "Partial" },
+          { color: "#f87171", label: "To Book" }
+        ].map(item => (
+          <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <div style={{ width: 12, height: 12, borderRadius: "50%", background: item.color, border: "2px solid rgba(255,255,255,0.7)" }} />
+            <span style={{ fontSize: 10, opacity: 0.6 }}>{item.label}</span>
+          </div>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ width: 20, height: 0, borderTop: "2px dashed #38bdf8" }} />
+          <span style={{ fontSize: 10, opacity: 0.6 }}>Flight</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ width: 20, height: 0, borderTop: "2px solid #e2c97e" }} />
+          <span style={{ fontSize: 10, opacity: 0.6 }}>Road</span>
+        </div>
+      </div>
+
+      {/* Map container */}
+      <div
+        ref={mapContainerRef}
+        style={{
+          width: "100%",
+          height: "max(500px, calc(100vh - 340px))",
+          borderRadius: 14,
+          overflow: "hidden",
+          border: "1px solid rgba(226,201,126,0.15)",
+          background: "#0a1628"
+        }}
+      />
+
+      {/* Map popup styling */}
+      <style>{`
+        .trip-map-popup .leaflet-popup-content-wrapper {
+          background: #f8f6f0;
+          border-radius: 10px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        }
+        .trip-map-popup .leaflet-popup-tip {
+          background: #f8f6f0;
+        }
+        .trip-map-popup .leaflet-popup-content {
+          margin: 10px 14px;
+        }
+        .leaflet-control-zoom a {
+          background: rgba(10,22,40,0.9) !important;
+          color: #e2c97e !important;
+          border-color: rgba(226,201,126,0.3) !important;
+        }
+        .leaflet-control-zoom a:hover {
+          background: rgba(10,22,40,1) !important;
+        }
+        .leaflet-control-attribution {
+          background: rgba(10,22,40,0.7) !important;
+          color: rgba(226,201,126,0.5) !important;
+          font-size: 9px !important;
+        }
+        .leaflet-control-attribution a {
+          color: rgba(226,201,126,0.6) !important;
+        }
+      `}</style>
+    </div>
+  );
 }
 
 export default function App() {
@@ -674,7 +960,7 @@ Return ONLY valid JSON with this exact structure, no markdown, no explanation:
 
       {/* TAB BAR */}
       <div style={{ display: "flex", borderBottom: "1px solid rgba(226,201,126,0.1)", background: "rgba(0,0,0,0.2)" }}>
-        {["itinerary", "calendar", "flights", "budget", "notes"].map(tab => (
+        {["itinerary", "map", "calendar", "flights", "budget", "notes"].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: "12px 4px", border: "none", background: "transparent", color: activeTab === tab ? "#e2c97e" : "rgba(232,220,200,0.35)", fontSize: "clamp(9px,2.5vw,11px)", letterSpacing: 1, textTransform: "uppercase", cursor: "pointer", borderBottom: activeTab === tab ? "2px solid #e2c97e" : "2px solid transparent" }}>{tab}</button>
         ))}
       </div>
@@ -892,6 +1178,14 @@ Return ONLY valid JSON with this exact structure, no markdown, no explanation:
               );
             })}
           </>
+        )}
+
+        {/* MAP TAB */}
+        {activeTab === "map" && (
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 12 }}>Trip route . 7 stops . 3 countries</div>
+            <TripMap plan={plan} />
+          </div>
         )}
 
         {/* CALENDAR TAB */}
