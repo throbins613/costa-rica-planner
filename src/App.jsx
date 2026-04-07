@@ -106,7 +106,7 @@ export default function App() {
   const researchLeg = async (leg) => {
     setResearching(r => ({ ...r, [leg.id]: true }));
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, system: "You are a luxury family travel expert. Return ONLY valid JSON arrays, no markdown, no explanation.", messages: [{ role: "user", content: RESEARCH_PROMPTS[leg.id] }] })
