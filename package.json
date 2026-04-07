@@ -14,7 +14,7 @@
     "react-dom": "^19.2.4"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
