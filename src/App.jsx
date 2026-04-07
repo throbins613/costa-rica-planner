@@ -203,23 +203,36 @@ export default function App() {
 
   const showNotification = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 2500); };
 
+  const mergePlanDefaults = (parsed) => {
+    if (!parsed.dayNotes) parsed.dayNotes = INITIAL_PLAN.dayNotes;
+    if (!parsed.flightOptions) parsed.flightOptions = {};
+    if (!parsed.replanHistory) parsed.replanHistory = [];
+    parsed.legs = parsed.legs.map((leg, i) => ({
+      ...INITIAL_PLAN.legs[i],
+      ...leg,
+      startDate: leg.startDate || INITIAL_PLAN.legs[i]?.startDate,
+      endDate: leg.endDate || INITIAL_PLAN.legs[i]?.endDate
+    }));
+    return parsed;
+  };
+
   const loadPlan = async () => {
     try {
+      // Try cloud first
+      const res = await fetch("/api/plan");
+      const { plan: cloudPlan } = await res.json();
+      if (cloudPlan) {
+        setPlan(mergePlanDefaults(cloudPlan));
+        setLoading(false);
+        return;
+      }
+      // Fall back to localStorage
       const saved = localStorage.getItem("cr2026-plan-v3");
       if (saved) {
-        const parsed = JSON.parse(saved);
-        // Ensure new fields exist on loaded data
-        if (!parsed.dayNotes) parsed.dayNotes = INITIAL_PLAN.dayNotes;
-        if (!parsed.flightOptions) parsed.flightOptions = {};
-        if (!parsed.replanHistory) parsed.replanHistory = [];
-        // Ensure legs have startDate/endDate
-        parsed.legs = parsed.legs.map((leg, i) => ({
-          ...INITIAL_PLAN.legs[i],
-          ...leg,
-          startDate: leg.startDate || INITIAL_PLAN.legs[i]?.startDate,
-          endDate: leg.endDate || INITIAL_PLAN.legs[i]?.endDate
-        }));
+        const parsed = mergePlanDefaults(JSON.parse(saved));
         setPlan(parsed);
+        // Migrate localStorage data to cloud
+        fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: parsed }) }).catch(() => {});
       } else {
         setPlan(INITIAL_PLAN);
       }
@@ -230,6 +243,8 @@ export default function App() {
   const savePlan = async (updated) => {
     setSaving(true);
     try { localStorage.setItem("cr2026-plan-v3", JSON.stringify(updated)); } catch {}
+    // Save to cloud
+    try { await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plan: updated }) }); } catch {}
     setSaving(false);
   };
 
