@@ -58,7 +58,8 @@ const INITIAL_PLAN = {
     "2026-08-23": "Theme parks - Disney, Universal, rest day",
     "2026-08-24": "Drive to Miami. BA0206 home 17:00"
   },
-  flightOptions: {}
+  flightOptions: {},
+  replanHistory: []
 };
 
 const STATUS_CONFIG = {
@@ -114,6 +115,66 @@ function getFlightForDate(dateStr, flights) {
 
 const TRIP_DATES = generateTripDates();
 
+// --- Replan diff helpers ---
+function diffLegs(oldLegs, newLegs) {
+  const changes = [];
+  const oldIds = new Set(oldLegs.map(l => l.id));
+  const newIds = new Set(newLegs.map(l => l.id));
+
+  for (const nl of newLegs) {
+    if (!oldIds.has(nl.id)) {
+      changes.push({ type: "added", leg: nl });
+    } else {
+      const ol = oldLegs.find(l => l.id === nl.id);
+      const diffs = [];
+      if (ol.dates !== nl.dates) diffs.push(`Dates: ${ol.dates} -> ${nl.dates}`);
+      if (ol.nights !== nl.nights) diffs.push(`Nights: ${ol.nights} -> ${nl.nights}`);
+      if (ol.location !== nl.location) diffs.push(`Location: ${ol.location} -> ${nl.location}`);
+      if (ol.label !== nl.label) diffs.push(`Label: ${ol.label} -> ${nl.label}`);
+      // Check order change
+      const oldIdx = oldLegs.findIndex(l => l.id === nl.id);
+      const newIdx = newLegs.findIndex(l => l.id === nl.id);
+      if (oldIdx !== newIdx) diffs.push(`Reordered: position ${oldIdx + 1} -> ${newIdx + 1}`);
+      if (diffs.length > 0) {
+        changes.push({ type: "modified", leg: nl, diffs });
+      }
+    }
+  }
+
+  for (const ol of oldLegs) {
+    if (!newIds.has(ol.id)) {
+      changes.push({ type: "removed", leg: ol });
+    }
+  }
+
+  return changes;
+}
+
+function diffFlights(oldFlights, newFlights) {
+  const changes = [];
+  const oldIds = new Set(oldFlights.map(f => f.id));
+  const newIds = new Set(newFlights.map(f => f.id));
+
+  for (const nf of newFlights) {
+    if (!oldIds.has(nf.id)) {
+      changes.push({ type: "added", flight: nf });
+    } else {
+      const of_ = oldFlights.find(f => f.id === nf.id);
+      if (of_.label !== nf.label || of_.detail !== nf.detail) {
+        changes.push({ type: "modified", flight: nf, old: of_ });
+      }
+    }
+  }
+
+  for (const of_ of oldFlights) {
+    if (!newIds.has(of_.id)) {
+      changes.push({ type: "removed", flight: of_ });
+    }
+  }
+
+  return changes;
+}
+
 export default function App() {
   const [plan, setPlan] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -132,6 +193,12 @@ export default function App() {
   const legRefs = useRef({});
   const timelineRef = useRef(null);
 
+  // Replan state
+  const [replanRequest, setReplanRequest] = useState("");
+  const [replanning, setReplanning] = useState(false);
+  const [proposedPlan, setProposedPlan] = useState(null);
+  const [replanDiff, setReplanDiff] = useState(null);
+
   useEffect(() => { loadPlan(); }, []);
 
   const showNotification = (msg) => { setNotification(msg); setTimeout(() => setNotification(null), 2500); };
@@ -144,6 +211,7 @@ export default function App() {
         // Ensure new fields exist on loaded data
         if (!parsed.dayNotes) parsed.dayNotes = INITIAL_PLAN.dayNotes;
         if (!parsed.flightOptions) parsed.flightOptions = {};
+        if (!parsed.replanHistory) parsed.replanHistory = [];
         // Ensure legs have startDate/endDate
         parsed.legs = parsed.legs.map((leg, i) => ({
           ...INITIAL_PLAN.legs[i],
@@ -252,6 +320,152 @@ export default function App() {
 
   const resetPlan = async () => { setPlan(INITIAL_PLAN); await savePlan(INITIAL_PLAN); showNotification("Plan reset"); };
 
+  // --- AI Replan ---
+  const submitReplan = async () => {
+    if (!replanRequest.trim()) return;
+    setReplanning(true);
+    setProposedPlan(null);
+    setReplanDiff(null);
+
+    const currentPlanSummary = JSON.stringify({
+      legs: plan.legs.map(l => ({ id: l.id, label: l.label, dates: l.dates, nights: l.nights, location: l.location, startDate: l.startDate, endDate: l.endDate })),
+      flights: plan.flights.map(f => ({ id: f.id, label: f.label, detail: f.detail, booked: f.booked })),
+      budget: plan.budget,
+      dayNotes: plan.dayNotes
+    }, null, 2);
+
+    const replanPrompt = `${TRIP_CONTEXT}
+
+Here is the current trip plan:
+${currentPlanSummary}
+
+User's change request: "${replanRequest}"
+
+Restructure this trip plan based on the request. Keep the same JSON structure. For each leg include: id (lowercase kebab-case), icon (emoji), label, dates (e.g. "5 - 11 Aug"), nights, location, status ("todo"), booked (false), notes, tasks (array of {id, text, done}), options (empty array []), startDate (YYYY-MM-DD), endDate (YYYY-MM-DD).
+
+For flights include: id, label, detail, booked (keep existing booked flights as booked if still relevant).
+
+For budget include: total and items array with label and estimate.
+
+For dayNotes include a key for each date (YYYY-MM-DD format) with a short description.
+
+The trip must still start 4 Aug 2026 and the return flight from Miami is booked for 24 Aug 2026 (BA0206 17:00). LHR to Miami is booked for 4 Aug (BA0207 09:55, arrives 14:30).
+
+Return ONLY valid JSON with this exact structure, no markdown, no explanation:
+{"legs": [...], "flights": [...], "budget": {...}, "dayNotes": {...}}`;
+
+    try {
+      const response = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          system: "You are a luxury family travel expert and trip planner. Return ONLY valid JSON, no markdown, no explanation.",
+          messages: [{ role: "user", content: replanPrompt }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.find(b => b.type === "text")?.text || "{}";
+      const cleaned = text.replace(/```json|```/g, "").trim();
+      const newPlanData = JSON.parse(cleaned);
+
+      // Build proposed plan by merging with current structure
+      const proposed = {
+        ...plan,
+        legs: newPlanData.legs || plan.legs,
+        flights: newPlanData.flights || plan.flights,
+        budget: newPlanData.budget || plan.budget,
+        dayNotes: newPlanData.dayNotes || plan.dayNotes
+      };
+
+      // Compute diff
+      const legChanges = diffLegs(plan.legs, proposed.legs);
+      const flightChanges = diffFlights(plan.flights, proposed.flights);
+      const budgetChanged = JSON.stringify(plan.budget) !== JSON.stringify(proposed.budget);
+
+      setProposedPlan(proposed);
+      setReplanDiff({ legChanges, flightChanges, budgetChanged });
+    } catch (err) {
+      console.error("Replan failed:", err);
+      showNotification("Replan failed - try again");
+    }
+    setReplanning(false);
+  };
+
+  const acceptReplan = () => {
+    if (!proposedPlan) return;
+
+    // Preserve existing votes, comments, options, and flightOptions from old plan
+    const merged = {
+      ...proposedPlan,
+      comments: plan.comments,
+      votes: plan.votes,
+      flightOptions: plan.flightOptions,
+      replanHistory: [
+        ...(plan.replanHistory || []),
+        {
+          timestamp: new Date().toISOString(),
+          request: replanRequest,
+          previousPlan: {
+            legs: plan.legs,
+            flights: plan.flights,
+            budget: plan.budget,
+            dayNotes: plan.dayNotes
+          }
+        }
+      ]
+    };
+
+    // Preserve options for legs that still exist
+    merged.legs = merged.legs.map(newLeg => {
+      const oldLeg = plan.legs.find(ol => ol.id === newLeg.id);
+      if (oldLeg) {
+        return {
+          ...newLeg,
+          options: oldLeg.options || [],
+          booked: oldLeg.booked,
+          status: oldLeg.status,
+          tasks: newLeg.tasks.map(nt => {
+            const oldTask = oldLeg.tasks.find(ot => ot.id === nt.id);
+            return oldTask ? { ...nt, done: oldTask.done } : nt;
+          })
+        };
+      }
+      return newLeg;
+    });
+
+    setPlan(merged);
+    savePlan(merged);
+    setProposedPlan(null);
+    setReplanDiff(null);
+    setReplanRequest("");
+    showNotification("Plan updated with new itinerary");
+  };
+
+  const rejectReplan = () => {
+    setProposedPlan(null);
+    setReplanDiff(null);
+    showNotification("Kept current plan");
+  };
+
+  const undoLastReplan = () => {
+    if (!plan.replanHistory || plan.replanHistory.length === 0) return;
+    const history = [...plan.replanHistory];
+    const last = history.pop();
+    const restored = {
+      ...plan,
+      legs: last.previousPlan.legs,
+      flights: last.previousPlan.flights,
+      budget: last.previousPlan.budget,
+      dayNotes: last.previousPlan.dayNotes,
+      replanHistory: history
+    };
+    setPlan(restored);
+    savePlan(restored);
+    showNotification("Reverted to previous plan");
+  };
+
   if (loading) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0a1628", color: "#e2c97e", fontFamily: "Georgia,serif", fontSize: 18 }}>Loading...</div>;
 
   const bookedCount = plan.legs.filter(l => l.booked).length;
@@ -275,6 +489,111 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg,#0a1628 0%,#0d2137 50%,#0a1e1a 100%)", fontFamily: "Georgia,serif", color: "#e8dcc8" }}>
       {notification && <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100, background: "#e2c97e", color: "#0a1628", padding: "10px 18px", borderRadius: 8, fontWeight: "bold", fontSize: 13 }}>{notification}</div>}
+
+      {/* REPLAN COMPARISON MODAL */}
+      {proposedPlan && replanDiff && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 560, maxHeight: "85vh", overflow: "auto", background: "#0d2137", border: "2px solid #e2c97e", borderRadius: 16, padding: "20px 18px" }}>
+            <h2 style={{ margin: "0 0 4px", fontSize: 18, color: "#e2c97e", fontWeight: "normal" }}>Proposed Changes</h2>
+            <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 16, fontStyle: "italic" }}>"{replanRequest}"</div>
+
+            {/* Leg changes */}
+            {replanDiff.legChanges.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 8 }}>Itinerary changes</div>
+                {replanDiff.legChanges.map((ch, i) => (
+                  <div key={i} style={{
+                    padding: "10px 12px",
+                    marginBottom: 6,
+                    borderRadius: 8,
+                    border: `1px solid ${ch.type === "added" ? "rgba(74,222,128,0.4)" : ch.type === "removed" ? "rgba(248,113,113,0.4)" : "rgba(226,201,126,0.3)"}`,
+                    background: ch.type === "added" ? "rgba(74,222,128,0.06)" : ch.type === "removed" ? "rgba(248,113,113,0.06)" : "rgba(226,201,126,0.04)"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        fontSize: 9, padding: "2px 7px", borderRadius: 10, fontWeight: "bold", letterSpacing: 1, textTransform: "uppercase",
+                        background: ch.type === "added" ? "rgba(74,222,128,0.15)" : ch.type === "removed" ? "rgba(248,113,113,0.15)" : "rgba(226,201,126,0.1)",
+                        color: ch.type === "added" ? "#4ade80" : ch.type === "removed" ? "#f87171" : "#e2c97e"
+                      }}>
+                        {ch.type === "added" ? "+ Added" : ch.type === "removed" ? "- Removed" : "~ Changed"}
+                      </span>
+                      <span style={{ fontSize: 13, color: "#e2c97e" }}>{ch.leg.icon} {ch.leg.label}</span>
+                    </div>
+                    {ch.type === "modified" && ch.diffs && (
+                      <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                        {ch.diffs.map((d, di) => (
+                          <div key={di} style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>{d}</div>
+                        ))}
+                      </div>
+                    )}
+                    {ch.type !== "modified" && (
+                      <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>
+                        {ch.leg.dates} . {ch.leg.nights}n . {ch.leg.location}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Flight changes */}
+            {replanDiff.flightChanges.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 8 }}>Flight changes</div>
+                {replanDiff.flightChanges.map((ch, i) => (
+                  <div key={i} style={{
+                    padding: "8px 12px",
+                    marginBottom: 6,
+                    borderRadius: 8,
+                    border: `1px solid ${ch.type === "added" ? "rgba(74,222,128,0.3)" : ch.type === "removed" ? "rgba(248,113,113,0.3)" : "rgba(56,189,248,0.3)"}`,
+                    background: ch.type === "added" ? "rgba(74,222,128,0.06)" : ch.type === "removed" ? "rgba(248,113,113,0.06)" : "rgba(56,189,248,0.04)"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{
+                        fontSize: 9, padding: "2px 7px", borderRadius: 10, fontWeight: "bold", letterSpacing: 1, textTransform: "uppercase",
+                        background: ch.type === "added" ? "rgba(74,222,128,0.15)" : ch.type === "removed" ? "rgba(248,113,113,0.15)" : "rgba(56,189,248,0.1)",
+                        color: ch.type === "added" ? "#4ade80" : ch.type === "removed" ? "#f87171" : "#38bdf8"
+                      }}>
+                        {ch.type === "added" ? "+ Added" : ch.type === "removed" ? "- Removed" : "~ Changed"}
+                      </span>
+                      <span style={{ fontSize: 12, color: "#38bdf8" }}>{ch.flight.label}</span>
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>{ch.flight.detail}</div>
+                    {ch.type === "modified" && ch.old && (
+                      <div style={{ fontSize: 10, opacity: 0.4, marginTop: 2, textDecoration: "line-through" }}>Was: {ch.old.label} - {ch.old.detail}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Budget change notice */}
+            {replanDiff.budgetChanged && (
+              <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 8, border: "1px solid rgba(226,201,126,0.3)", background: "rgba(226,201,126,0.04)" }}>
+                <div style={{ fontSize: 9, letterSpacing: 2, opacity: 0.4, textTransform: "uppercase", marginBottom: 6 }}>Budget updated</div>
+                <div style={{ fontSize: 14, color: "#e2c97e" }}>{proposedPlan.budget.total}</div>
+                {proposedPlan.budget.items.map((item, i) => (
+                  <div key={i} style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>{item.label}: {item.estimate}</div>
+                ))}
+              </div>
+            )}
+
+            {replanDiff.legChanges.length === 0 && replanDiff.flightChanges.length === 0 && !replanDiff.budgetChanged && (
+              <div style={{ padding: "20px 0", textAlign: "center", opacity: 0.5, fontStyle: "italic", fontSize: 13 }}>No structural changes detected. The AI may have made minor adjustments to notes or day plans.</div>
+            )}
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button onClick={acceptReplan} style={{ flex: 1, padding: "12px", background: "linear-gradient(135deg,#4ade80,#22c55e)", border: "none", borderRadius: 8, color: "#0a1628", fontFamily: "Georgia,serif", fontSize: 13, fontWeight: "bold", cursor: "pointer" }}>
+                Accept new plan
+              </button>
+              <button onClick={rejectReplan} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 8, color: "#f87171", fontFamily: "Georgia,serif", fontSize: 13, cursor: "pointer" }}>
+                Keep current
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* HEADER */}
       <div style={{ padding: "24px 16px 16px", borderBottom: "1px solid rgba(226,201,126,0.15)" }}>
@@ -349,143 +668,211 @@ export default function App() {
       <div style={{ padding: "14px 14px 90px", maxWidth: 640, margin: "0 auto" }}>
 
         {/* ITINERARY TAB */}
-        {activeTab === "itinerary" && plan.legs.map(leg => {
-          const sc = STATUS_CONFIG[leg.status], isExp = expandedLeg === leg.id, winner = getWinner(leg.id, leg.options), totalLegVotes = Object.keys(getVotesForLeg(leg.id)).length, doneLegTasks = leg.tasks.filter(t => t.done).length;
-          const flightKey = flightLegMap[leg.id];
-          const flightOpts = flightKey ? (plan.flightOptions?.[flightKey] || []) : [];
-          return (
-            <div key={leg.id} ref={el => legRefs.current[leg.id] = el} style={{ marginBottom: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(226,201,126,0.12)", borderRadius: 14, overflow: "hidden" }}>
-              <div style={{ padding: "14px 14px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span style={{ fontSize: 22 }}>{leg.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: "bold", color: "#e2c97e" }}>{leg.label}</div>
-                      <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>{leg.dates} . {leg.nights}n . {leg.location}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                    <div style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</div>
-                    {winner && <div style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, background: "rgba(226,201,126,0.1)", color: "#e2c97e" }}>{winner.name}</div>}
-                  </div>
+        {activeTab === "itinerary" && (
+          <>
+            {/* AI REPLAN SECTION */}
+            <div style={{
+              marginBottom: 16,
+              padding: "16px",
+              background: "rgba(226,201,126,0.04)",
+              border: "2px solid rgba(226,201,126,0.35)",
+              borderRadius: 14
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 13, color: "#e2c97e", fontWeight: "bold" }}>AI Replan</div>
+                  <div style={{ fontSize: 10, opacity: 0.45, marginTop: 2 }}>Describe changes in plain English</div>
                 </div>
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.55, lineHeight: 1.5, fontStyle: "italic" }}>{leg.notes}</div>
+                {plan.replanHistory && plan.replanHistory.length > 0 && (
+                  <button onClick={undoLastReplan} style={{
+                    fontSize: 10, padding: "4px 10px", background: "transparent",
+                    border: "1px solid rgba(226,201,126,0.25)", borderRadius: 6,
+                    color: "rgba(226,201,126,0.6)", cursor: "pointer", fontFamily: "Georgia,serif"
+                  }}>
+                    Undo last replan ({plan.replanHistory.length})
+                  </button>
+                )}
               </div>
-              <div style={{ padding: "10px 14px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={() => setExpandedLeg(isExp ? null : leg.id)} style={{ fontSize: 12, padding: "7px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(226,201,126,0.2)", borderRadius: 8, color: "rgba(226,201,126,0.8)", cursor: "pointer", fontFamily: "Georgia,serif" }}>
-                  {isExp ? "\u25B2 Hide tasks" : `\u25BC Tasks (${doneLegTasks}/${leg.tasks.length})`}
-                </button>
-                <button onClick={() => { setExpandedLeg(leg.id); researchLeg(leg); }} disabled={researching[leg.id]} style={{ fontSize: 12, padding: "7px 14px", background: researching[leg.id] ? "rgba(226,201,126,0.05)" : "linear-gradient(135deg,rgba(226,201,126,0.2),rgba(226,201,126,0.08))", border: "1px solid rgba(226,201,126,0.4)", borderRadius: 8, color: researching[leg.id] ? "rgba(226,201,126,0.4)" : "#e2c97e", cursor: researching[leg.id] ? "default" : "pointer", fontFamily: "Georgia,serif", fontWeight: "bold" }}>
-                  {researching[leg.id] ? "Searching..." : leg.options?.length > 0 ? `Re-search (${leg.options.length})` : "Find options"}
-                </button>
-              </div>
-              {isExp && (
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ padding: "12px 14px" }}>
-                    <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, marginBottom: 8, textTransform: "uppercase" }}>Tasks</div>
-                    {leg.tasks.map(task => (
-                      <div key={task.id} onClick={() => toggleTask(leg.id, task.id)} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "7px 0", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                        <div style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0, marginTop: 1, border: task.done ? "none" : "1px solid rgba(226,201,126,0.3)", background: task.done ? "#4ade80" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          {task.done && <span style={{ fontSize: 10, color: "#0a1628", fontWeight: "bold" }}>&#10003;</span>}
+              <textarea
+                value={replanRequest}
+                onChange={e => setReplanRequest(e.target.value)}
+                placeholder="Describe how you'd like to change the trip..."
+                rows={2}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitReplan(); } }}
+                style={{
+                  width: "100%", boxSizing: "border-box", padding: "10px 12px",
+                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(226,201,126,0.25)",
+                  borderRadius: 8, color: "#e8dcc8", fontSize: 12, fontFamily: "Georgia,serif",
+                  resize: "vertical", outline: "none", lineHeight: 1.5
+                }}
+              />
+              <button
+                onClick={submitReplan}
+                disabled={replanning || !replanRequest.trim()}
+                style={{
+                  marginTop: 8, width: "100%", padding: "11px",
+                  background: replanning
+                    ? "rgba(226,201,126,0.08)"
+                    : replanRequest.trim()
+                      ? "linear-gradient(135deg,#e2c97e,#c9a84c)"
+                      : "rgba(226,201,126,0.08)",
+                  border: replanning ? "1px solid rgba(226,201,126,0.2)" : "none",
+                  borderRadius: 8,
+                  color: replanning ? "rgba(226,201,126,0.5)" : replanRequest.trim() ? "#0a1628" : "rgba(226,201,126,0.3)",
+                  fontFamily: "Georgia,serif", fontSize: 13, fontWeight: "bold",
+                  cursor: replanning || !replanRequest.trim() ? "default" : "pointer",
+                  position: "relative", overflow: "hidden"
+                }}
+              >
+                {replanning ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ display: "inline-block", width: 14, height: 14, border: "2px solid rgba(226,201,126,0.3)", borderTopColor: "#e2c97e", borderRadius: "50%", animation: "replanSpin 0.8s linear infinite" }} />
+                    Replanning...
+                  </span>
+                ) : "Replan with AI"}
+              </button>
+            </div>
+
+            {/* LEG CARDS */}
+            {plan.legs.map(leg => {
+              const sc = STATUS_CONFIG[leg.status], isExp = expandedLeg === leg.id, winner = getWinner(leg.id, leg.options), totalLegVotes = Object.keys(getVotesForLeg(leg.id)).length, doneLegTasks = leg.tasks.filter(t => t.done).length;
+              const flightKey = flightLegMap[leg.id];
+              const flightOpts = flightKey ? (plan.flightOptions?.[flightKey] || []) : [];
+              return (
+                <div key={leg.id} ref={el => legRefs.current[leg.id] = el} style={{ marginBottom: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(226,201,126,0.12)", borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ padding: "14px 14px 0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 22 }}>{leg.icon}</span>
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: "bold", color: "#e2c97e" }}>{leg.label}</div>
+                          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>{leg.dates} . {leg.nights}n . {leg.location}</div>
                         </div>
-                        <span style={{ fontSize: 12, opacity: task.done ? 0.35 : 0.8, textDecoration: task.done ? "line-through" : "none", lineHeight: 1.4 }}>{task.text}</span>
                       </div>
-                    ))}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                      <button onClick={() => toggleLegBooked(leg.id)} style={{ fontSize: 11, padding: "5px 12px", background: leg.booked ? "rgba(74,222,128,0.1)" : "transparent", border: `1px solid ${leg.booked ? "#4ade80" : "rgba(226,201,126,0.2)"}`, borderRadius: 6, color: leg.booked ? "#4ade80" : "rgba(226,201,126,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>
-                        {leg.booked ? "\u2713 Marked booked" : "Mark as booked"}
-                      </button>
-                      {flightKey && (
-                        <button
-                          onClick={() => researchFlights(flightKey)}
-                          disabled={researchingFlights[flightKey]}
-                          style={{
-                            fontSize: 11,
-                            padding: "5px 12px",
-                            background: researchingFlights[flightKey] ? "rgba(226,201,126,0.05)" : "linear-gradient(135deg,rgba(56,189,248,0.2),rgba(56,189,248,0.08))",
-                            border: "1px solid rgba(56,189,248,0.4)",
-                            borderRadius: 6,
-                            color: researchingFlights[flightKey] ? "rgba(56,189,248,0.4)" : "#38bdf8",
-                            cursor: researchingFlights[flightKey] ? "default" : "pointer",
-                            fontFamily: "Georgia,serif",
-                            fontWeight: "bold"
-                          }}
-                        >
-                          {researchingFlights[flightKey] ? "Searching flights..." : flightOpts.length > 0 ? `\u2708\uFE0F Re-search flights (${flightOpts.length})` : "\u2708\uFE0F Research flights"}
-                        </button>
-                      )}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                        <div style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</div>
+                        {winner && <div style={{ fontSize: 9, padding: "2px 7px", borderRadius: 20, background: "rgba(226,201,126,0.1)", color: "#e2c97e" }}>{winner.name}</div>}
+                      </div>
                     </div>
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.55, lineHeight: 1.5, fontStyle: "italic" }}>{leg.notes}</div>
                   </div>
-
-                  {/* Flight options display */}
-                  {flightKey && flightOpts.length > 0 && (
-                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "12px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, textTransform: "uppercase" }}>\u2708\uFE0F {flightOpts.length} flight options</div>
-                        <button onClick={() => { const updated = { ...plan, flightOptions: { ...plan.flightOptions, [flightKey]: [] } }; setPlan(updated); savePlan(updated); }} style={{ fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 5, color: "rgba(248,113,113,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>Clear</button>
-                      </div>
-                      {flightOpts.map(opt => (
-                        <div key={opt.id} style={{ marginBottom: 8, padding: "10px 12px", background: "rgba(56,189,248,0.04)", border: "1px solid rgba(56,189,248,0.15)", borderRadius: 10 }}>
-                          <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: "bold" }}>{opt.name}</div>
-                          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2, fontStyle: "italic" }}>{opt.tagline}</div>
-                          <div style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>{opt.price}</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-                            <div>
-                              <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 4 }}>Pros</div>
-                              {(opt.pros || []).map((p, pi) => <div key={pi} style={{ fontSize: 10, opacity: 0.75, marginBottom: 2, lineHeight: 1.4 }}>{p}</div>)}
+                  <div style={{ padding: "10px 14px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={() => setExpandedLeg(isExp ? null : leg.id)} style={{ fontSize: 12, padding: "7px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(226,201,126,0.2)", borderRadius: 8, color: "rgba(226,201,126,0.8)", cursor: "pointer", fontFamily: "Georgia,serif" }}>
+                      {isExp ? "\u25B2 Hide tasks" : `\u25BC Tasks (${doneLegTasks}/${leg.tasks.length})`}
+                    </button>
+                    <button onClick={() => { setExpandedLeg(leg.id); researchLeg(leg); }} disabled={researching[leg.id]} style={{ fontSize: 12, padding: "7px 14px", background: researching[leg.id] ? "rgba(226,201,126,0.05)" : "linear-gradient(135deg,rgba(226,201,126,0.2),rgba(226,201,126,0.08))", border: "1px solid rgba(226,201,126,0.4)", borderRadius: 8, color: researching[leg.id] ? "rgba(226,201,126,0.4)" : "#e2c97e", cursor: researching[leg.id] ? "default" : "pointer", fontFamily: "Georgia,serif", fontWeight: "bold" }}>
+                      {researching[leg.id] ? "Searching..." : leg.options?.length > 0 ? `Re-search (${leg.options.length})` : "Find options"}
+                    </button>
+                  </div>
+                  {isExp && (
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, marginBottom: 8, textTransform: "uppercase" }}>Tasks</div>
+                        {leg.tasks.map(task => (
+                          <div key={task.id} onClick={() => toggleTask(leg.id, task.id)} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "7px 0", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                            <div style={{ width: 16, height: 16, borderRadius: 3, flexShrink: 0, marginTop: 1, border: task.done ? "none" : "1px solid rgba(226,201,126,0.3)", background: task.done ? "#4ade80" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {task.done && <span style={{ fontSize: 10, color: "#0a1628", fontWeight: "bold" }}>&#10003;</span>}
                             </div>
-                            <div>
-                              <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 4 }}>Cons</div>
-                              {(opt.cons || []).map((c, ci) => <div key={ci} style={{ fontSize: 10, opacity: 0.75, marginBottom: 2, lineHeight: 1.4 }}>{c}</div>)}
-                            </div>
+                            <span style={{ fontSize: 12, opacity: task.done ? 0.35 : 0.8, textDecoration: task.done ? "line-through" : "none", lineHeight: 1.4 }}>{task.text}</span>
                           </div>
-                          {opt.bookingTip && <div style={{ marginTop: 8, padding: "6px 8px", background: "rgba(56,189,248,0.06)", borderRadius: 5, fontSize: 10, opacity: 0.8, lineHeight: 1.4 }}>{opt.bookingTip}</div>}
+                        ))}
+                        <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                          <button onClick={() => toggleLegBooked(leg.id)} style={{ fontSize: 11, padding: "5px 12px", background: leg.booked ? "rgba(74,222,128,0.1)" : "transparent", border: `1px solid ${leg.booked ? "#4ade80" : "rgba(226,201,126,0.2)"}`, borderRadius: 6, color: leg.booked ? "#4ade80" : "rgba(226,201,126,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>
+                            {leg.booked ? "\u2713 Marked booked" : "Mark as booked"}
+                          </button>
+                          {flightKey && (
+                            <button
+                              onClick={() => researchFlights(flightKey)}
+                              disabled={researchingFlights[flightKey]}
+                              style={{
+                                fontSize: 11,
+                                padding: "5px 12px",
+                                background: researchingFlights[flightKey] ? "rgba(226,201,126,0.05)" : "linear-gradient(135deg,rgba(56,189,248,0.2),rgba(56,189,248,0.08))",
+                                border: "1px solid rgba(56,189,248,0.4)",
+                                borderRadius: 6,
+                                color: researchingFlights[flightKey] ? "rgba(56,189,248,0.4)" : "#38bdf8",
+                                cursor: researchingFlights[flightKey] ? "default" : "pointer",
+                                fontFamily: "Georgia,serif",
+                                fontWeight: "bold"
+                              }}
+                            >
+                              {researchingFlights[flightKey] ? "Searching flights..." : flightOpts.length > 0 ? `\u2708\uFE0F Re-search flights (${flightOpts.length})` : "\u2708\uFE0F Research flights"}
+                            </button>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Accommodation options */}
-                  {leg.options?.length > 0 && (
-                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "12px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, textTransform: "uppercase" }}>{leg.options.length} options . {totalLegVotes} vote{totalLegVotes !== 1 ? "s" : ""}</div>
-                        <button onClick={() => clearOptions(leg.id)} style={{ fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 5, color: "rgba(248,113,113,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>Clear</button>
                       </div>
-                      <input value={voterName} onChange={e => setVoterName(e.target.value)} placeholder="Your name to vote..." style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginBottom: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(226,201,126,0.15)", borderRadius: 7, color: "#e8dcc8", fontSize: 12, fontFamily: "Georgia,serif", outline: "none" }} />
-                      {leg.options.map(opt => {
-                        const optVoters = getVotesForOption(leg.id, opt.id), myVote = voterName && getVotesForLeg(leg.id)[voterName] === opt.id, isWin = winner?.id === opt.id && optVoters.length > 0, pct = totalLegVotes > 0 ? Math.round((optVoters.length / totalLegVotes) * 100) : 0, isExpOpt = expandedOption === `${leg.id}-${opt.id}`;
-                        return (
-                          <div key={opt.id} style={{ marginBottom: 9, background: isWin ? "rgba(226,201,126,0.05)" : "rgba(255,255,255,0.02)", border: `1px solid ${isWin ? "rgba(226,201,126,0.35)" : myVote ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.07)"}`, borderRadius: 10, overflow: "hidden" }}>
-                            <div style={{ padding: "11px 12px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: 13, color: "#e2c97e", fontWeight: "bold" }}>{isWin ? "\uD83C\uDFC6 " : ""}{opt.name}</div>
-                                  <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2, fontStyle: "italic" }}>{opt.tagline}</div>
-                                  <div style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>{opt.price}</div>
+
+                      {/* Flight options display */}
+                      {flightKey && flightOpts.length > 0 && (
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "12px 14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                            <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, textTransform: "uppercase" }}>\u2708\uFE0F {flightOpts.length} flight options</div>
+                            <button onClick={() => { const updated = { ...plan, flightOptions: { ...plan.flightOptions, [flightKey]: [] } }; setPlan(updated); savePlan(updated); }} style={{ fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 5, color: "rgba(248,113,113,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>Clear</button>
+                          </div>
+                          {flightOpts.map(opt => (
+                            <div key={opt.id} style={{ marginBottom: 8, padding: "10px 12px", background: "rgba(56,189,248,0.04)", border: "1px solid rgba(56,189,248,0.15)", borderRadius: 10 }}>
+                              <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: "bold" }}>{opt.name}</div>
+                              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2, fontStyle: "italic" }}>{opt.tagline}</div>
+                              <div style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>{opt.price}</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                                <div>
+                                  <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 4 }}>Pros</div>
+                                  {(opt.pros || []).map((p, pi) => <div key={pi} style={{ fontSize: 10, opacity: 0.75, marginBottom: 2, lineHeight: 1.4 }}>{p}</div>)}
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
-                                  <div style={{ fontSize: 11, color: "#e2c97e" }}>{"★".repeat(Math.round(opt.rating || 4))}{"☆".repeat(5 - Math.round(opt.rating || 4))}</div>
-                                  <button onClick={() => castVote(leg.id, opt.id)} style={{ fontSize: 11, padding: "5px 12px", background: myVote ? "rgba(74,222,128,0.15)" : "rgba(226,201,126,0.1)", border: `1px solid ${myVote ? "#4ade80" : "rgba(226,201,126,0.3)"}`, borderRadius: 6, color: myVote ? "#4ade80" : "#e2c97e", cursor: "pointer", fontFamily: "Georgia,serif", fontWeight: "bold" }}>
-                                    {myVote ? "\u2713 Voted" : "Vote"}
-                                  </button>
+                                <div>
+                                  <div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 4 }}>Cons</div>
+                                  {(opt.cons || []).map((c, ci) => <div key={ci} style={{ fontSize: 10, opacity: 0.75, marginBottom: 2, lineHeight: 1.4 }}>{c}</div>)}
                                 </div>
                               </div>
-                              {totalLegVotes > 0 && (<div style={{ marginTop: 8 }}><div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: isWin ? "#e2c97e" : "#4ade80", borderRadius: 2, transition: "width 0.4s" }} /></div><div style={{ fontSize: 10, opacity: 0.45, marginTop: 3 }}>{optVoters.length} vote{optVoters.length !== 1 ? "s" : ""} . {pct}%</div></div>)}
-                              {optVoters.length > 0 && (<div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>{optVoters.map((name, vi) => (<div key={name} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: `${VOTER_COLORS[vi % VOTER_COLORS.length]}18`, border: `1px solid ${VOTER_COLORS[vi % VOTER_COLORS.length]}40`, color: VOTER_COLORS[vi % VOTER_COLORS.length] }}>{name}</div>))}</div>)}
-                              <button onClick={() => setExpandedOption(isExpOpt ? null : `${leg.id}-${opt.id}`)} style={{ marginTop: 7, fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "rgba(232,220,200,0.4)", cursor: "pointer", fontFamily: "Georgia,serif" }}>{isExpOpt ? "\u25B2 Less" : "\u25BC Pros, cons & tip"}</button>
+                              {opt.bookingTip && <div style={{ marginTop: 8, padding: "6px 8px", background: "rgba(56,189,248,0.06)", borderRadius: 5, fontSize: 10, opacity: 0.8, lineHeight: 1.4 }}>{opt.bookingTip}</div>}
                             </div>
-                            {isExpOpt && (<div style={{ padding: "0 12px 12px", borderTop: "1px solid rgba(255,255,255,0.05)" }}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}><div><div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 5 }}>Pros</div>{(opt.pros || []).map((p, pi) => <div key={pi} style={{ fontSize: 11, opacity: 0.75, marginBottom: 3, lineHeight: 1.4 }}>{p}</div>)}</div><div><div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 5 }}>Cons</div>{(opt.cons || []).map((c, ci) => <div key={ci} style={{ fontSize: 11, opacity: 0.75, marginBottom: 3, lineHeight: 1.4 }}>{c}</div>)}</div></div>{opt.bookingTip && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(226,201,126,0.06)", borderRadius: 6, fontSize: 11, opacity: 0.8, lineHeight: 1.5 }}>{opt.bookingTip}</div>}</div>)}
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Accommodation options */}
+                      {leg.options?.length > 0 && (
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "12px 14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                            <div style={{ fontSize: 9, letterSpacing: 1.5, opacity: 0.4, textTransform: "uppercase" }}>{leg.options.length} options . {totalLegVotes} vote{totalLegVotes !== 1 ? "s" : ""}</div>
+                            <button onClick={() => clearOptions(leg.id)} style={{ fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 5, color: "rgba(248,113,113,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>Clear</button>
                           </div>
-                        );
-                      })}
+                          <input value={voterName} onChange={e => setVoterName(e.target.value)} placeholder="Your name to vote..." style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", marginBottom: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(226,201,126,0.15)", borderRadius: 7, color: "#e8dcc8", fontSize: 12, fontFamily: "Georgia,serif", outline: "none" }} />
+                          {leg.options.map(opt => {
+                            const optVoters = getVotesForOption(leg.id, opt.id), myVote = voterName && getVotesForLeg(leg.id)[voterName] === opt.id, isWin = winner?.id === opt.id && optVoters.length > 0, pct = totalLegVotes > 0 ? Math.round((optVoters.length / totalLegVotes) * 100) : 0, isExpOpt = expandedOption === `${leg.id}-${opt.id}`;
+                            return (
+                              <div key={opt.id} style={{ marginBottom: 9, background: isWin ? "rgba(226,201,126,0.05)" : "rgba(255,255,255,0.02)", border: `1px solid ${isWin ? "rgba(226,201,126,0.35)" : myVote ? "rgba(74,222,128,0.2)" : "rgba(255,255,255,0.07)"}`, borderRadius: 10, overflow: "hidden" }}>
+                                <div style={{ padding: "11px 12px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: 13, color: "#e2c97e", fontWeight: "bold" }}>{isWin ? "\uD83C\uDFC6 " : ""}{opt.name}</div>
+                                      <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2, fontStyle: "italic" }}>{opt.tagline}</div>
+                                      <div style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>{opt.price}</div>
+                                    </div>
+                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                                      <div style={{ fontSize: 11, color: "#e2c97e" }}>{"★".repeat(Math.round(opt.rating || 4))}{"☆".repeat(5 - Math.round(opt.rating || 4))}</div>
+                                      <button onClick={() => castVote(leg.id, opt.id)} style={{ fontSize: 11, padding: "5px 12px", background: myVote ? "rgba(74,222,128,0.15)" : "rgba(226,201,126,0.1)", border: `1px solid ${myVote ? "#4ade80" : "rgba(226,201,126,0.3)"}`, borderRadius: 6, color: myVote ? "#4ade80" : "#e2c97e", cursor: "pointer", fontFamily: "Georgia,serif", fontWeight: "bold" }}>
+                                        {myVote ? "\u2713 Voted" : "Vote"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                  {totalLegVotes > 0 && (<div style={{ marginTop: 8 }}><div style={{ height: 3, background: "rgba(255,255,255,0.07)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${pct}%`, background: isWin ? "#e2c97e" : "#4ade80", borderRadius: 2, transition: "width 0.4s" }} /></div><div style={{ fontSize: 10, opacity: 0.45, marginTop: 3 }}>{optVoters.length} vote{optVoters.length !== 1 ? "s" : ""} . {pct}%</div></div>)}
+                                  {optVoters.length > 0 && (<div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>{optVoters.map((name, vi) => (<div key={name} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 10, background: `${VOTER_COLORS[vi % VOTER_COLORS.length]}18`, border: `1px solid ${VOTER_COLORS[vi % VOTER_COLORS.length]}40`, color: VOTER_COLORS[vi % VOTER_COLORS.length] }}>{name}</div>))}</div>)}
+                                  <button onClick={() => setExpandedOption(isExpOpt ? null : `${leg.id}-${opt.id}`)} style={{ marginTop: 7, fontSize: 10, padding: "3px 8px", background: "transparent", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 4, color: "rgba(232,220,200,0.4)", cursor: "pointer", fontFamily: "Georgia,serif" }}>{isExpOpt ? "\u25B2 Less" : "\u25BC Pros, cons & tip"}</button>
+                                </div>
+                                {isExpOpt && (<div style={{ padding: "0 12px 12px", borderTop: "1px solid rgba(255,255,255,0.05)" }}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}><div><div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 5 }}>Pros</div>{(opt.pros || []).map((p, pi) => <div key={pi} style={{ fontSize: 11, opacity: 0.75, marginBottom: 3, lineHeight: 1.4 }}>{p}</div>)}</div><div><div style={{ fontSize: 9, letterSpacing: 1, opacity: 0.4, textTransform: "uppercase", marginBottom: 5 }}>Cons</div>{(opt.cons || []).map((c, ci) => <div key={ci} style={{ fontSize: 11, opacity: 0.75, marginBottom: 3, lineHeight: 1.4 }}>{c}</div>)}</div></div>{opt.bookingTip && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(226,201,126,0.06)", borderRadius: 6, fontSize: 11, opacity: 0.8, lineHeight: 1.5 }}>{opt.bookingTip}</div>}</div>)}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </>
+        )}
 
         {/* CALENDAR TAB */}
         {activeTab === "calendar" && (
@@ -684,7 +1071,7 @@ export default function App() {
         <div style={{ fontSize: 10, opacity: 0.4 }}>{saving ? "Saving..." : "Saved locally"}</div>
         <button onClick={resetPlan} style={{ fontSize: 10, padding: "4px 10px", background: "transparent", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 5, color: "rgba(248,113,113,0.6)", cursor: "pointer", fontFamily: "Georgia,serif" }}>Reset</button>
       </div>
-      <style>{`*{-webkit-tap-highlight-color:transparent}input::placeholder,textarea::placeholder{color:rgba(232,220,200,0.3)}::-webkit-scrollbar{height:4px}::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}::-webkit-scrollbar-thumb{background:rgba(226,201,126,0.3);border-radius:2px}`}</style>
+      <style>{`*{-webkit-tap-highlight-color:transparent}input::placeholder,textarea::placeholder{color:rgba(232,220,200,0.3)}::-webkit-scrollbar{height:4px}::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}::-webkit-scrollbar-thumb{background:rgba(226,201,126,0.3);border-radius:2px}@keyframes replanSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
